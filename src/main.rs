@@ -3,12 +3,38 @@ extern crate meval;
 extern crate crossbeam;
 extern crate num_cpus;
 
-#[macro_use]
-extern crate generator;
-
 use argparse::{ArgumentParser, Store};
 use meval::Expr;
-use generator::Gn;
+use std::iter::Iterator;
+
+struct FloatRange {
+    value: f64,
+    highbound: f64,
+    epsilon: f64,
+}
+
+impl FloatRange {
+    fn new(lowbound: f64, highbound: f64, epsilon: f64) -> Result<FloatRange,()> {
+        if lowbound <= highbound {
+            Ok(FloatRange{ value: lowbound - epsilon, highbound, epsilon})
+        } else {
+            Err(())
+        }
+    }
+}
+
+impl Iterator for FloatRange {
+    type Item = f64;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.value += self.epsilon;
+        if self.value < self.highbound {
+            Some(self.value)
+        } else {
+            None
+        }
+    }
+}
 
 fn main() {
     let mut text_func = "x^2".to_string();
@@ -47,14 +73,7 @@ fn main() {
                 let lb = low_bound + (high_bound - low_bound)/(threads as f64) * (i as f64);
                 let hb = low_bound + (high_bound - low_bound)/(threads as f64) * (i as f64 + 1_f64);
                 let eps = epsilon.clone();
-                let g = Gn::new_scoped(move |mut s: generator::Scope<(), f64>| {
-                    let mut i: f64 = lb.clone();
-                    while i < hb {
-                        i += eps;
-                        s.yield_(i);
-                    }
-                    done!();
-                });
+                let g = FloatRange::new(lb, hb, eps).unwrap();
                 let ex = expr.clone();
                 spawner.spawn(move ||{
                     let func = ex.bind("x").unwrap();
