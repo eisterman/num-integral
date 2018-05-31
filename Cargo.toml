@@ -1,0 +1,9 @@
+[package]
+name = "num-integral"
+version = "0.1.0"
+authors = ["eisterman"]
+
+[dependencies]
+meval = "0.1"
+argparse = "0.2"
+generator = "0.6"
