@@ -1,5 +1,7 @@
 extern crate argparse;
 extern crate meval;
+extern crate crossbeam;
+extern crate num_cpus;
 
 #[macro_use]
 extern crate generator;
@@ -31,26 +33,38 @@ fn main() {
         ap.refer(&mut epsilon)
             .add_option(&["-e", "--epsilon"], Store,
                         "Numerical epsilon/step.");
-        let result = ap.parse_args();
-        if let Err(c) = result {
-            let args: Vec<String> = std::env::args().collect();
-            let name = if args.len() > 0 { &args[0][..] } else { "unknown" };
-            ap.print_help(name, &mut std::io::stdout()).unwrap();
-            std::process::exit(c);
-        }
+        ap.parse_args_or_exit();
     }
     let expr: Expr = text_func.parse().unwrap();
-    let func = expr.bind("x").unwrap();
 
-    let g = Gn::new_scoped(|mut s| {
-        let mut i = low_bound.clone();
-        while i < high_bound {
-            i += epsilon;
-            s.yield_(i);
-        }
-        done!();
-    });
+    let threads = num_cpus::get();
 
-    let result: f64 = g.map(&*func).fold(0_f64, |acc, x| acc + (x * epsilon) );
-    println!("Result: {}", result);
+    let mut results = vec![0_f64;threads];
+    {
+        let refs: Vec<&mut f64> = results.iter_mut().collect();
+        crossbeam::scope(|spawner| {
+            for (i,out_ref) in refs.into_iter().enumerate(){
+                let lb = low_bound + (high_bound - low_bound)/(threads as f64) * (i as f64);
+                let hb = low_bound + (high_bound - low_bound)/(threads as f64) * (i as f64 + 1_f64);
+                let eps = epsilon.clone();
+                let g = Gn::new_scoped(move |mut s: generator::Scope<(), f64>| {
+                    let mut i: f64 = lb.clone();
+                    while i < hb {
+                        i += eps;
+                        s.yield_(i);
+                    }
+                    done!();
+                });
+                let ex = expr.clone();
+                spawner.spawn(move ||{
+                    let func = ex.bind("x").unwrap();
+                    let partial = g.map(&*func).fold(0_f64, |acc, x| acc + (x * epsilon) );
+                    *out_ref += partial;
+                });
+            }
+        });
+    }
+
+    let output: f64 = results.iter().sum();
+    println!("Result: {}", output);
 }

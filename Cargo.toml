@@ -7,3 +7,5 @@ authors = ["eisterman"]
 meval = "0.1"
 argparse = "0.2"
 generator = "0.6"
+num_cpus = "1.8"
+crossbeam = "0.3"
